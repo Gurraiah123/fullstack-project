@@ -2,12 +2,10 @@ pipeline {
     agent any
 
     environment {
-        EC2_USER = "ubuntu"
         EC2_HOST = "34.206.52.251"
-        KEY_PATH = "/var/lib/jenkins/keys/UbuntuKeypair.pem"
+        EC2_USER = "ubuntu"
 
-        BACKEND_DIR = "/home/ubuntu/fullstack-project/fullstack-project/backend"
-        FRONTEND_DIR = "/home/ubuntu/fullstack-project/fullstack-project/frontend"
+        APP_DIR = "/home/ubuntu/fullstack-project/fullstack-project"
     }
 
     stages {
@@ -23,11 +21,7 @@ pipeline {
             steps {
                 sh '''
                 cd backend
-
                 python3 -m venv venv
-
-                # ❌ DO NOT use source (Jenkins sh does not support it)
-
                 ./venv/bin/pip install --upgrade pip
                 ./venv/bin/pip install -r requirements.txt
                 '''
@@ -44,44 +38,49 @@ pipeline {
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Deploy to EC2 (No PEM)') {
             steps {
-                sh '''
-                
+                sshagent(['ec2-key']) {
+                    sh """
+                    echo "Deploying to EC2..."
 
-                echo "Deploying to EC2..."
+                    ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST '
+                        mkdir -p $APP_DIR
+                    '
 
-                ssh -o StrictHostKeyChecking=no -i /var/lib/jenkins/keys/UbuntuKeypair.pem ubuntu@34.206.52.251 "
-                    mkdir -p /home/ubuntu/fullstack-project/fullstack-project
-                "
+                    rsync -avz -e "ssh -o StrictHostKeyChecking=no" backend/ \
+                    $EC2_USER@$EC2_HOST:$APP_DIR/backend
 
-                rsync -avz -e "ssh -i /var/lib/jenkins/keys/UbuntuKeypair.pem -o StrictHostKeyChecking=no" \
-                backend/ ubuntu@34.206.52.251:/home/ubuntu/fullstack-project/fullstack-project/backend
-
-                rsync -avz -e "ssh -i /var/lib/jenkins/keys/UbuntuKeypair.pem -o StrictHostKeyChecking=no" \
-                frontend/dist/ ubuntu@34.206.52.251:/home/ubuntu/fullstack-project/fullstack-project/frontend/dist
-                '''
+                    rsync -avz -e "ssh -o StrictHostKeyChecking=no" frontend/dist/ \
+                    $EC2_USER@$EC2_HOST:$APP_DIR/frontend/dist
+                    """
+                }
             }
         }
 
         stage('Restart Services') {
             steps {
-                sh '''
-                ssh -i /var/lib/jenkins/keys/UbuntuKeypair.pem ubuntu@34.206.52.251 << EOF
+                sshagent(['ec2-key']) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
 
-                sudo systemctl daemon-reload
-                sudo systemctl restart fastapi || true
-                sudo systemctl restart nginx
+                    echo "Restarting backend..."
+                    sudo systemctl daemon-reload
+                    sudo systemctl restart fastapi || true
 
-                EOF
-                '''
+                    echo "Restarting nginx..."
+                    sudo systemctl restart nginx
+
+                    EOF
+                    """
+                }
             }
         }
     }
 
     post {
         success {
-            echo "🚀 Deployment Successful"
+            echo "🚀 Deployment Successful (Industry Pipeline)"
         }
         failure {
             echo "❌ Deployment Failed"
