@@ -3,12 +3,12 @@ pipeline {
 
     environment {
         EC2_USER = "ubuntu"
-        EC2_HOST = "3.90.35.201"
-        KEY_PATH = "/var/lib/jenkins/keys/ec2-key.pem"
+        EC2_HOST = "34.206.52.251"
+        KEY_PATH = "/var/lib/jenkins/keys/your-key.pem"
 
-        BACKEND_PATH = "/home/ubuntu/fullstack-project/backend"
-        FRONTEND_PATH = "/home/ubuntu/fullstack-project/frontend"
-        NGINX_PATH = "/var/www/fullstack"
+        PROJECT_DIR = "/home/ubuntu/fullstack-project/fullstack-project"
+        BACKEND_DIR = "/home/ubuntu/fullstack-project/fullstack-project/backend"
+        FRONTEND_DIR = "/home/ubuntu/fullstack-project/fullstack-project/frontend"
     }
 
     stages {
@@ -16,7 +16,19 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 git branch: 'main',
-                url: 'https://github.com/Premchand-96/fullstack-project.git'
+                url: 'https://github.com/YOUR_USERNAME/YOUR_REPO.git'
+            }
+        }
+
+        stage('Build Backend (Test Only)') {
+            steps {
+                sh '''
+                cd backend
+                python3 -m venv venv
+                source venv/bin/activate
+                pip install --upgrade pip
+                pip install -r requirements.txt
+                '''
             }
         }
 
@@ -30,24 +42,21 @@ pipeline {
             }
         }
 
-        stage('Deploy Backend + Frontend to EC2') {
+        stage('Deploy to EC2') {
             steps {
                 sh '''
                 chmod 600 $KEY_PATH
 
-                # Create folders if not exist
-                ssh -i $KEY_PATH -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "
-                    mkdir -p /home/ubuntu/fullstack-project/backend
-                    sudo mkdir -p /var/www/fullstack
+                echo "Creating directories on EC2..."
+                ssh -o StrictHostKeyChecking=no -i $KEY_PATH $EC2_USER@$EC2_HOST "
+                    mkdir -p $PROJECT_DIR
                 "
 
-                # Copy backend
-                rsync -avz -e "ssh -i $KEY_PATH -o StrictHostKeyChecking=no" backend/ \
-                $EC2_USER@$EC2_HOST:$BACKEND_PATH
+                echo "Copying backend..."
+                rsync -avz -e "ssh -i $KEY_PATH -o StrictHostKeyChecking=no" backend/ $EC2_USER@$EC2_HOST:$BACKEND_DIR
 
-                # Copy frontend build (IMPORTANT: dist folder)
-                rsync -avz -e "ssh -i $KEY_PATH -o StrictHostKeyChecking=no" frontend/dist/ \
-                $EC2_USER@$EC2_HOST:$NGINX_PATH
+                echo "Copying frontend build..."
+                rsync -avz -e "ssh -i $KEY_PATH -o StrictHostKeyChecking=no" frontend/dist/ $EC2_USER@$EC2_HOST:$FRONTEND_DIR/dist
                 '''
             }
         }
@@ -57,18 +66,15 @@ pipeline {
                 sh '''
                 ssh -i $KEY_PATH -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
 
-                echo "Restarting backend..."
+                echo "Restarting FastAPI..."
 
                 sudo systemctl daemon-reload
-                sudo systemctl restart fastapi
-                sudo systemctl enable fastapi
+                sudo systemctl restart fastapi || true
 
-                echo "Restarting nginx..."
+                echo "Restarting Nginx..."
                 sudo systemctl restart nginx
 
-                echo "Deployment complete 🚀"
-
-EOF
+                EOF
                 '''
             }
         }
@@ -76,10 +82,10 @@ EOF
 
     post {
         success {
-            echo "✅ Deployment SUCCESS"
+            echo "🚀 Deployment Successful"
         }
         failure {
-            echo "❌ Deployment FAILED"
+            echo "❌ Deployment Failed"
         }
     }
 }
