@@ -35,37 +35,39 @@ pipeline {
             }
         }
 
-        stage('Deploy to EC2 (NO SSH AGENT)') {
+        stage('Deploy to EC2 (FIXED SSH)') {
             steps {
-                sh '''
-                echo "Deploying using direct SSH key..."
+                sshagent(['ec2-key']) {
+                    sh """
+                    echo "Deploying to EC2..."
 
-                ssh -o StrictHostKeyChecking=no ubuntu@34.206.52.251 << 'EOF'
+                    ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST '
+                        mkdir -p /home/ubuntu/fullstack-project/fullstack-project
+                    '
 
-                mkdir -p /home/ubuntu/fullstack-project/fullstack-project
+                    rsync -avz -e "ssh -o StrictHostKeyChecking=no" backend/ \
+                    $EC2_USER@$EC2_HOST:/home/ubuntu/fullstack-project/fullstack-project/backend
 
-                EOF
-
-                rsync -avz -e "ssh -o StrictHostKeyChecking=no" backend/ \
-                ubuntu@34.206.52.251:/home/ubuntu/fullstack-project/fullstack-project/backend
-
-                rsync -avz -e "ssh -o StrictHostKeyChecking=no" frontend/dist/ \
-                ubuntu@34.206.52.251:/home/ubuntu/fullstack-project/fullstack-project/frontend/dist
-                '''
+                    rsync -avz -e "ssh -o StrictHostKeyChecking=no" frontend/dist/ \
+                    $EC2_USER@$EC2_HOST:/home/ubuntu/fullstack-project/fullstack-project/frontend/dist
+                    """
+                }
             }
         }
 
         stage('Restart Services') {
             steps {
-                sh '''
-                ssh -o StrictHostKeyChecking=no ubuntu@34.206.52.251 << 'EOF'
+                sshagent(['ec2-key']) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
 
-                sudo systemctl daemon-reload
-                sudo systemctl restart fastapi || true
-                sudo systemctl restart nginx
+                    sudo systemctl daemon-reload
+                    sudo systemctl restart fastapi || true
+                    sudo systemctl restart nginx
 
-                EOF
-                '''
+                    EOF
+                    """
+                }
             }
         }
     }
