@@ -4,7 +4,7 @@ pipeline {
     environment {
         EC2_USER = "ubuntu"
         EC2_HOST = "34.206.52.251"
-        KEY_PATH = "/var/lib/jenkins/keys/your-key.pem"
+        KEY_PATH = "/var/lib/jenkins/keys/UbuntuKeypair.pem"
 
         PROJECT_DIR = "/home/ubuntu/fullstack-project/fullstack-project"
         BACKEND_DIR = "/home/ubuntu/fullstack-project/fullstack-project/backend"
@@ -20,7 +20,7 @@ pipeline {
             }
         }
 
-        stage('Build Backend (Test Only)') {
+        stage('Build Backend') {
             steps {
                 sh '''
                 cd backend
@@ -45,18 +45,21 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 sh '''
-                chmod 600 $KEY_PATH
+                chmod 400 /var/lib/jenkins/keys/UbuntuKeypair.pem
 
-                echo "Creating directories on EC2..."
-                ssh -o StrictHostKeyChecking=no -i $KEY_PATH $EC2_USER@$EC2_HOST "
-                    mkdir -p $PROJECT_DIR
+                echo "Connecting to EC2: ubuntu@34.206.52.251"
+
+                ssh -o StrictHostKeyChecking=no -i /var/lib/jenkins/keys/UbuntuKeypair.pem ubuntu@34.206.52.251 "
+                    mkdir -p /home/ubuntu/fullstack-project/fullstack-project
                 "
 
                 echo "Copying backend..."
-                rsync -avz -e "ssh -i $KEY_PATH -o StrictHostKeyChecking=no" backend/ $EC2_USER@$EC2_HOST:$BACKEND_DIR
+                rsync -avz -e "ssh -i /var/lib/jenkins/keys/UbuntuKeypair.pem -o StrictHostKeyChecking=no" \
+                backend/ ubuntu@34.206.52.251:/home/ubuntu/fullstack-project/fullstack-project/backend
 
                 echo "Copying frontend build..."
-                rsync -avz -e "ssh -i $KEY_PATH -o StrictHostKeyChecking=no" frontend/dist/ $EC2_USER@$EC2_HOST:$FRONTEND_DIR/dist
+                rsync -avz -e "ssh -i /var/lib/jenkins/keys/UbuntuKeypair.pem -o StrictHostKeyChecking=no" \
+                frontend/dist/ ubuntu@34.206.52.251:/home/ubuntu/fullstack-project/fullstack-project/frontend/dist
                 '''
             }
         }
@@ -64,12 +67,11 @@ pipeline {
         stage('Restart Services on EC2') {
             steps {
                 sh '''
-                ssh -i $KEY_PATH -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
+                ssh -i /var/lib/jenkins/keys/UbuntuKeypair.pem -o StrictHostKeyChecking=no ubuntu@34.206.52.251 << 'EOF'
 
                 echo "Restarting FastAPI..."
-
                 sudo systemctl daemon-reload
-                sudo systemctl restart fastapi || true
+                sudo systemctl restart fastapi || echo "FastAPI restart failed"
 
                 echo "Restarting Nginx..."
                 sudo systemctl restart nginx
@@ -82,7 +84,7 @@ pipeline {
 
     post {
         success {
-            echo "🚀 Deployment Successful"
+            echo "🚀 Deployment Successful on EC2 (34.206.52.251)"
         }
         failure {
             echo "❌ Deployment Failed"
