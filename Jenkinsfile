@@ -6,7 +6,6 @@ pipeline {
         EC2_HOST = "34.206.52.251"
         KEY_PATH = "/var/lib/jenkins/keys/UbuntuKeypair.pem"
 
-        PROJECT_DIR = "/home/ubuntu/fullstack-project/fullstack-project"
         BACKEND_DIR = "/home/ubuntu/fullstack-project/fullstack-project/backend"
         FRONTEND_DIR = "/home/ubuntu/fullstack-project/fullstack-project/frontend"
     }
@@ -24,10 +23,13 @@ pipeline {
             steps {
                 sh '''
                 cd backend
+
                 python3 -m venv venv
-                source venv/bin/activate
-                pip install --upgrade pip
-                pip install -r requirements.txt
+
+                # ❌ DO NOT use source (Jenkins sh does not support it)
+
+                ./venv/bin/pip install --upgrade pip
+                ./venv/bin/pip install -r requirements.txt
                 '''
             }
         }
@@ -47,33 +49,28 @@ pipeline {
                 sh '''
                 chmod 400 /var/lib/jenkins/keys/UbuntuKeypair.pem
 
-                echo "Connecting to EC2: ubuntu@34.206.52.251"
+                echo "Deploying to EC2..."
 
                 ssh -o StrictHostKeyChecking=no -i /var/lib/jenkins/keys/UbuntuKeypair.pem ubuntu@34.206.52.251 "
                     mkdir -p /home/ubuntu/fullstack-project/fullstack-project
                 "
 
-                echo "Copying backend..."
                 rsync -avz -e "ssh -i /var/lib/jenkins/keys/UbuntuKeypair.pem -o StrictHostKeyChecking=no" \
                 backend/ ubuntu@34.206.52.251:/home/ubuntu/fullstack-project/fullstack-project/backend
 
-                echo "Copying frontend build..."
                 rsync -avz -e "ssh -i /var/lib/jenkins/keys/UbuntuKeypair.pem -o StrictHostKeyChecking=no" \
                 frontend/dist/ ubuntu@34.206.52.251:/home/ubuntu/fullstack-project/fullstack-project/frontend/dist
                 '''
             }
         }
 
-        stage('Restart Services on EC2') {
+        stage('Restart Services') {
             steps {
                 sh '''
-                ssh -i /var/lib/jenkins/keys/UbuntuKeypair.pem -o StrictHostKeyChecking=no ubuntu@34.206.52.251 << 'EOF'
+                ssh -i /var/lib/jenkins/keys/UbuntuKeypair.pem ubuntu@34.206.52.251 << EOF
 
-                echo "Restarting FastAPI..."
                 sudo systemctl daemon-reload
-                sudo systemctl restart fastapi || echo "FastAPI restart failed"
-
-                echo "Restarting Nginx..."
+                sudo systemctl restart fastapi || true
                 sudo systemctl restart nginx
 
                 EOF
@@ -84,7 +81,7 @@ pipeline {
 
     post {
         success {
-            echo "🚀 Deployment Successful on EC2 (34.206.52.251)"
+            echo "🚀 Deployment Successful"
         }
         failure {
             echo "❌ Deployment Failed"
