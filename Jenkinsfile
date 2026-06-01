@@ -47,7 +47,7 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 sh '''
-                chmod 400 /var/lib/jenkins/keys/UbuntuKeypair.pem
+                
 
                 echo "Deploying to EC2..."
 
