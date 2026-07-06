@@ -1,15 +1,14 @@
-
 pipeline {
     agent { label 'build-agent' }
 
     environment {
-        AWS_REGION = 'us-east-1'
-        AWS_ACCOUNT_ID = '211856249789'
+        AWS_REGION = "us-east-1"
+        AWS_ACCOUNT_ID = "211856249789"
 
-        FRONTEND_REPO = 'fullstack-project-frontend'
-        BACKEND_REPO  = 'fullstack-project-backend'
+        FRONTEND_REPO = "fullstack-project-frontend"
+        BACKEND_REPO  = "fullstack-project-backend"
 
-        EKS_CLUSTER = 'education-cluster'
+        EKS_CLUSTER = "education-cluster"
 
         FRONTEND_IMAGE = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${FRONTEND_REPO}"
         BACKEND_IMAGE  = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${BACKEND_REPO}"
@@ -19,13 +18,6 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
-            steps {
-                git branch: 'main',
-                    url: 'https://github.com/Premchand-96/fullstack-project.git'
-            }
-        }
-
         stage('Verify Tools') {
             steps {
                 sh '''
@@ -34,13 +26,11 @@ pipeline {
                 kubectl version --client
                 eksctl version
                 java -version
-                node -v
-                npm -v
                 '''
             }
         }
 
-        stage('AWS Login') {
+        stage('Configure AWS & Login ECR') {
             steps {
                 withCredentials([
                     usernamePassword(
@@ -49,21 +39,21 @@ pipeline {
                         passwordVariable: 'lkiJ4RdOT3l0WXTju4ZK0k6+3uij74ZOaqSrAJVc'
                     )
                 ]) {
-
                     sh '''
                     aws configure set aws_access_key_id $AKIATCU452O6SE7R2GQC
                     aws configure set aws_secret_access_key $lkiJ4RdOT3l0WXTju4ZK0k6+3uij74ZOaqSrAJVc
                     aws configure set default.region ${us-east-1}
 
-                    aws ecr get-login-password --region ${us-east-1} | \
-                    docker login --username AWS --password-stdin \
-                    ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    aws ecr get-login-password --region ${us-east-1} | docker login \
+                    --username AWS \
+                    --password-stdin \
+                    ${AWS_ACCOUNT_ID}.dkr.ecr.${us-east-1}.amazonaws.com
                     '''
                 }
             }
         }
 
-        stage('Build Backend Image') {
+        stage('Build Backend Docker Image') {
             steps {
                 dir('backend') {
                     sh '''
@@ -75,7 +65,7 @@ pipeline {
             }
         }
 
-        stage('Build Frontend Image') {
+        stage('Build Frontend Docker Image') {
             steps {
                 dir('frontend') {
                     sh '''
@@ -126,8 +116,8 @@ pipeline {
                 kubectl set image deployment/frontend \
                 frontend=${FRONTEND_IMAGE}:${IMAGE_TAG}
 
-                kubectl rollout status deployment/backend
-                kubectl rollout status deployment/frontend
+                kubectl rollout status deployment/backend --timeout=300s
+                kubectl rollout status deployment/frontend --timeout=300s
                 '''
             }
         }
@@ -136,27 +126,26 @@ pipeline {
             steps {
                 sh '''
                 kubectl get nodes
-                kubectl get pods -A
-                kubectl get svc -A
+                kubectl get pods
+                kubectl get svc
                 '''
             }
         }
     }
 
     post {
-
         always {
             sh '''
-            docker image prune -f
+            docker image prune -af || true
             '''
         }
 
         success {
-            echo 'Pipeline completed successfully.'
+            echo 'CI/CD Pipeline Completed Successfully.'
         }
 
         failure {
-            echo 'Pipeline failed.'
+            echo 'CI/CD Pipeline Failed.'
         }
     }
 }
