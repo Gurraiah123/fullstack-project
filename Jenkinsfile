@@ -27,30 +27,25 @@ pipeline {
 
         stage('Build Backend Docker Image') {
             steps {
-                dir('backend') {
-                    sh '''
-                    docker build -t ${BACKEND_REPO}:${IMAGE_TAG} .
-                 stage('Build Backend Docker Image') {
-    steps {
-        sh '''
-        docker build -t ${BACKEND_REPO}:${IMAGE_TAG} \
-        -f backend/Dockerfile backend
+                sh '''
+                docker build -t ${BACKEND_REPO}:${IMAGE_TAG} \
+                -f backend/Dockerfile backend
 
-        docker tag ${BACKEND_REPO}:${IMAGE_TAG} ${BACKEND_REPO}:latest
-        '''
-    }
-}
+                docker tag ${BACKEND_REPO}:${IMAGE_TAG} ${BACKEND_REPO}:latest
+                '''
+            }
+        }
 
-stage('Build Frontend Docker Image') {
-    steps {
-        sh '''
-        docker build -t ${FRONTEND_REPO}:${IMAGE_TAG} \
-        -f frontend/Dockerfile frontend
+        stage('Build Frontend Docker Image') {
+            steps {
+                sh '''
+                docker build -t ${FRONTEND_REPO}:${IMAGE_TAG} \
+                -f frontend/Dockerfile frontend
 
-        docker tag ${FRONTEND_REPO}:${IMAGE_TAG} ${FRONTEND_REPO}:latest
-        '''
-    }
-}
+                docker tag ${FRONTEND_REPO}:${IMAGE_TAG} ${FRONTEND_REPO}:latest
+                '''
+            }
+        }
 
         stage('List Docker Images') {
             steps {
