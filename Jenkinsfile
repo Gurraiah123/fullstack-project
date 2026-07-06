@@ -22,7 +22,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 git branch: 'main',
-                    url: 'https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git'
+                    url: 'https://github.com/Premchand-96/fullstack-project.git'
             }
         }
 
@@ -45,17 +45,17 @@ pipeline {
                 withCredentials([
                     usernamePassword(
                         credentialsId: 'aws-creds',
-                        usernameVariable: 'AWS_ACCESS_KEY_ID',
-                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                        usernameVariable: 'AKIATCU452O6SE7R2GQC',
+                        passwordVariable: 'lkiJ4RdOT3l0WXTju4ZK0k6+3uij74ZOaqSrAJVc'
                     )
                 ]) {
 
                     sh '''
-                    aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-                    aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-                    aws configure set default.region ${AWS_REGION}
+                    aws configure set aws_access_key_id $AKIATCU452O6SE7R2GQC
+                    aws configure set aws_secret_access_key $lkiJ4RdOT3l0WXTju4ZK0k6+3uij74ZOaqSrAJVc
+                    aws configure set default.region ${us-east-1}
 
-                    aws ecr get-login-password --region ${AWS_REGION} | \
+                    aws ecr get-login-password --region ${us-east-1} | \
                     docker login --username AWS --password-stdin \
                     ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
                     '''
@@ -109,7 +109,7 @@ pipeline {
             steps {
                 sh '''
                 aws eks update-kubeconfig \
-                --region ${AWS_REGION} \
+                --region ${us-east-1} \
                 --name ${EKS_CLUSTER}
                 '''
             }
