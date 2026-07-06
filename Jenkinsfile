@@ -13,17 +13,26 @@ pipeline {
 
     stages {
 
-        stage('Verify Tools') {
-            steps {
-                sh '''
-                docker --version
-                aws --version
-                kubectl version --client
-                eksctl version
-                java -version
-                '''
-            }
-        }
+        stage('Check Workspace') {
+    steps {
+        sh '''
+        echo "Current Directory:"
+        pwd
+
+        echo "Workspace Files:"
+        ls -la
+
+        echo "Find Dockerfiles:"
+        find . -name Dockerfile
+
+        echo "Backend Directory:"
+        ls -la backend || true
+
+        echo "Frontend Directory:"
+        ls -la frontend || true
+        '''
+    }
+}
 
         stage('Build Backend Docker Image') {
             steps {
