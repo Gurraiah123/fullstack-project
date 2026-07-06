@@ -3,15 +3,11 @@ pipeline {
 
     environment {
         AWS_REGION = "us-east-1"
-        AWS_ACCOUNT_ID = "211856249789"
+        EKS_CLUSTER = "education-cluster"
 
         FRONTEND_REPO = "fullstack-project-frontend"
-        BACKEND_REPO = "fullstack-project-backend"
+        BACKEND_REPO  = "fullstack-project-backend"
 
-        FRONTEND_IMAGE = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${FRONTEND_REPO}"
-        BACKEND_IMAGE = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${BACKEND_REPO}"
-
-        EKS_CLUSTER = "education-cluster"
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
@@ -29,55 +25,32 @@ pipeline {
             }
         }
 
-        stage('Login to Amazon ECR') {
-            steps {
-                sh '''
-                aws ecr get-login-password --region ${AWS_REGION} | docker login \
-                --username AWS \
-                --password-stdin \
-                ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-                '''
-            }
-        }
-
-        stage('Build Backend Image') {
+        stage('Build Backend Docker Image') {
             steps {
                 dir('backend') {
                     sh '''
                     docker build -t ${BACKEND_REPO}:${IMAGE_TAG} .
-                    docker tag ${BACKEND_REPO}:${IMAGE_TAG} ${BACKEND_IMAGE}:${IMAGE_TAG}
-                    docker tag ${BACKEND_REPO}:${IMAGE_TAG} ${BACKEND_IMAGE}:latest
+                    docker tag ${BACKEND_REPO}:${IMAGE_TAG} ${BACKEND_REPO}:latest
                     '''
                 }
             }
         }
 
-        stage('Build Frontend Image') {
+        stage('Build Frontend Docker Image') {
             steps {
                 dir('frontend') {
                     sh '''
                     docker build -t ${FRONTEND_REPO}:${IMAGE_TAG} .
-                    docker tag ${FRONTEND_REPO}:${IMAGE_TAG} ${FRONTEND_IMAGE}:${IMAGE_TAG}
-                    docker tag ${FRONTEND_REPO}:${IMAGE_TAG} ${FRONTEND_IMAGE}:latest
+                    docker tag ${FRONTEND_REPO}:${IMAGE_TAG} ${FRONTEND_REPO}:latest
                     '''
                 }
             }
         }
 
-        stage('Push Backend Image') {
+        stage('List Docker Images') {
             steps {
                 sh '''
-                docker push ${BACKEND_IMAGE}:${IMAGE_TAG}
-                docker push ${BACKEND_IMAGE}:latest
-                '''
-            }
-        }
-
-        stage('Push Frontend Image') {
-            steps {
-                sh '''
-                docker push ${FRONTEND_IMAGE}:${IMAGE_TAG}
-                docker push ${FRONTEND_IMAGE}:latest
+                docker images
                 '''
             }
         }
