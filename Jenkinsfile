@@ -1,90 +1,162 @@
+
 pipeline {
-    agent any
+    agent { label 'build-agent' }
+
+    environment {
+        AWS_REGION = 'us-east-1'
+        AWS_ACCOUNT_ID = '211856249789'
+
+        FRONTEND_REPO = 'fullstack-project-frontend'
+        BACKEND_REPO  = 'fullstack-project-backend'
+
+        EKS_CLUSTER = 'education-cluster'
+
+        FRONTEND_IMAGE = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${FRONTEND_REPO}"
+        BACKEND_IMAGE  = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${BACKEND_REPO}"
+
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
                 git branch: 'main',
-                    url: 'https://github.com/Premchand-96/fullstack-project.git'
+                    url: 'https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git'
             }
         }
 
-        stage('Build Backend') {
+        stage('Verify Tools') {
             steps {
                 sh '''
-                cd backend
-
-                rm -rf venv
-                python3 -m venv venv
-
-                ./venv/bin/python -m pip install --upgrade pip
-                ./venv/bin/pip install -r requirements.txt
+                docker --version
+                aws --version
+                kubectl version --client
+                eksctl version
+                java -version
+                node -v
+                npm -v
                 '''
             }
         }
 
-        stage('Build Frontend') {
+        stage('AWS Login') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'aws-creds',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                    )
+                ]) {
+
+                    sh '''
+                    aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+                    aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+                    aws configure set default.region ${AWS_REGION}
+
+                    aws ecr get-login-password --region ${AWS_REGION} | \
+                    docker login --username AWS --password-stdin \
+                    ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    '''
+                }
+            }
+        }
+
+        stage('Build Backend Image') {
+            steps {
+                dir('backend') {
+                    sh '''
+                    docker build -t ${BACKEND_REPO}:${IMAGE_TAG} .
+                    docker tag ${BACKEND_REPO}:${IMAGE_TAG} ${BACKEND_IMAGE}:${IMAGE_TAG}
+                    docker tag ${BACKEND_REPO}:${IMAGE_TAG} ${BACKEND_IMAGE}:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Build Frontend Image') {
+            steps {
+                dir('frontend') {
+                    sh '''
+                    docker build -t ${FRONTEND_REPO}:${IMAGE_TAG} .
+                    docker tag ${FRONTEND_REPO}:${IMAGE_TAG} ${FRONTEND_IMAGE}:${IMAGE_TAG}
+                    docker tag ${FRONTEND_REPO}:${IMAGE_TAG} ${FRONTEND_IMAGE}:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Push Backend Image') {
             steps {
                 sh '''
-                cd frontend
-
-                npm install
-                npm run build
+                docker push ${BACKEND_IMAGE}:${IMAGE_TAG}
+                docker push ${BACKEND_IMAGE}:latest
                 '''
             }
         }
 
-        stage('Deploy Frontend') {
+        stage('Push Frontend Image') {
             steps {
                 sh '''
-                sudo rm -rf /var/www/html/*
-                sudo cp -r frontend/dist/* /var/www/html/
+                docker push ${FRONTEND_IMAGE}:${IMAGE_TAG}
+                docker push ${FRONTEND_IMAGE}:latest
                 '''
             }
         }
 
-        stage('Restart Backend') {
+        stage('Configure kubectl') {
             steps {
                 sh '''
-                sudo pkill -f uvicorn || true
-                sleep 5
-
-                sudo systemctl daemon-reload
-                sudo systemctl restart fastapi
-
-                sleep 5
-                sudo systemctl status fastapi --no-pager
+                aws eks update-kubeconfig \
+                --region ${AWS_REGION} \
+                --name ${EKS_CLUSTER}
                 '''
             }
         }
 
-        stage('Restart Nginx') {
+        stage('Deploy to EKS') {
             steps {
                 sh '''
-                sudo systemctl restart nginx
-                sudo systemctl status nginx --no-pager
+                kubectl apply -f k8s/
+
+                kubectl set image deployment/backend \
+                backend=${BACKEND_IMAGE}:${IMAGE_TAG}
+
+                kubectl set image deployment/frontend \
+                frontend=${FRONTEND_IMAGE}:${IMAGE_TAG}
+
+                kubectl rollout status deployment/backend
+                kubectl rollout status deployment/frontend
                 '''
             }
         }
 
-        stage('Health Check') {
+        stage('Verify Deployment') {
             steps {
                 sh '''
-                curl -I http://localhost || true
-                curl http://localhost:8000/ || true
+                kubectl get nodes
+                kubectl get pods -A
+                kubectl get svc -A
                 '''
             }
         }
     }
 
     post {
+
+        always {
+            sh '''
+            docker image prune -f
+            '''
+        }
+
         success {
-            echo 'Deployment Successful'
+            echo 'Pipeline completed successfully.'
         }
 
         failure {
-            echo 'Deployment Failed'
+            echo 'Pipeline failed.'
         }
     }
 }
