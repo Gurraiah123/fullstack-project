@@ -1,10 +1,9 @@
 pipeline {
-
     agent any
 
     environment {
         FRONTEND_DIR = "frontend"
-        BACKEND_DIR  = "backend"
+        BACKEND_DIR = "backend"
     }
 
     stages {
@@ -12,24 +11,6 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 checkout scm
-            }
-        }
-
-        stage('Check Tools') {
-            steps {
-                sh '''
-                echo "Checking installed tools..."
-
-                python3 --version
-                pip3 --version
-
-                node -v
-                npm -v
-
-                nginx -v
-
-                git --version
-                '''
             }
         }
 
@@ -41,7 +22,7 @@ pipeline {
 
                     python3 -m venv venv
 
-                    ./venv/bin/python -m pip install --upgrade pip
+                    ./venv/bin/pip install --upgrade pip
 
                     ./venv/bin/pip install -r requirements.txt
                     '''
@@ -54,39 +35,38 @@ pipeline {
                 dir("${FRONTEND_DIR}") {
                     sh '''
                     npm install
-
                     npm run build
                     '''
                 }
             }
         }
 
-        stage('Deploy Frontend') {
+        stage('Start Backend') {
             steps {
                 sh '''
-                sudo rm -rf /var/www/html/*
+                pkill -f "uvicorn" || true
 
-                sudo cp -r frontend/dist/* /var/www/html/
+                cd backend
+
+                nohup ./venv/bin/uvicorn main:app \
+                    --host 0.0.0.0 \
+                    --port 8000 \
+                    > backend.log 2>&1 &
                 '''
             }
         }
 
-        stage('Restart Backend') {
+        stage('Start Frontend') {
             steps {
                 sh '''
-                sudo systemctl restart fastapi
+                pkill -f "vite preview" || true
 
-                sudo systemctl status fastapi --no-pager
-                '''
-            }
-        }
+                cd frontend
 
-        stage('Restart Nginx') {
-            steps {
-                sh '''
-                sudo systemctl restart nginx
-
-                sudo systemctl status nginx --no-pager
+                nohup npm run preview -- \
+                    --host 0.0.0.0 \
+                    --port 5173 \
+                    > frontend.log 2>&1 &
                 '''
             }
         }
@@ -94,22 +74,23 @@ pipeline {
         stage('Health Check') {
             steps {
                 sh '''
-                curl -I http://localhost
+                sleep 10
 
                 curl http://127.0.0.1:8000/
+
+                curl http://127.0.0.1:5173/
                 '''
             }
         }
     }
 
     post {
-
         success {
-            echo 'Deployment Successful'
+            echo "Deployment Successful"
         }
 
         failure {
-            echo 'Deployment Failed'
+            echo "Deployment Failed"
         }
     }
 }
