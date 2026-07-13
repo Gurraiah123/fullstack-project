@@ -20,7 +20,7 @@ function App() {
     e.preventDefault();
 
     try {
-      const response = await fetch("http://100.26.12.194:8000/api/users", {
+      const response = await fetch("http://98.91.21.107:8000/api/users", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
