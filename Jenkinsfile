@@ -85,7 +85,7 @@ pipeline {
 
             steps {
 
-                sshagent(credentials: ['ec2-key']) {
+                sshagent(credentials: ['ubuntu-agent-key']) {
 
                     sh """
                     ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} << EOF
