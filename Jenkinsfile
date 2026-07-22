@@ -50,29 +50,15 @@ pipeline {
             }
         }
 
-        stage('Backend - Install Dependencies') {
-            steps {
-                dir("${BACKEND_DIR}") {
-                    sh '''
-                        python3 -m venv venv
-
-                        ./venv/bin/pip install --upgrade pip
-
-                        ./venv/bin/pip install -r requirements.txt
-                    '''
-                }
-            }
-        }
-
-        stage('Create Deployment Package') {
+        stage('Package Application') {
             steps {
                 sh '''
                     rm -f app.zip
 
                     zip -r app.zip . \
-                        -x "*.git*" \
-                        -x "frontend/node_modules/*" \
-                        -x "backend/venv/*"
+                    -x "*.git*" \
+                    -x "frontend/node_modules/*" \
+                    -x "backend/venv/*"
                 '''
             }
         }
@@ -80,8 +66,9 @@ pipeline {
         stage('Copy Package to EC2') {
             steps {
                 sshagent(credentials: ['ubuntu-agent-key']) {
+
                     sh """
-                        scp -o StrictHostKeyChecking=no app.zip ${DEPLOY_USER}@${DEPLOY_SERVER}:/tmp/
+                    scp -o StrictHostKeyChecking=no app.zip ${DEPLOY_USER}@${DEPLOY_SERVER}:/tmp/
                     """
                 }
             }
@@ -89,6 +76,7 @@ pipeline {
 
         stage('Deploy Application') {
             steps {
+
                 sshagent(credentials: ['ubuntu-agent-key']) {
 
                     sh """
@@ -101,25 +89,29 @@ echo "Cleaning old deployment..."
 sudo rm -rf /home/ubuntu/fullstack-project
 mkdir -p /home/ubuntu/fullstack-project
 
-echo "Extracting package..."
+echo "Extracting application..."
 
-rm -rf /tmp/backend /tmp/frontend /tmp/Jenkinsfile
+rm -rf /tmp/backend /tmp/frontend
 unzip -o /tmp/app.zip -d /tmp
-
-echo "Copying project..."
 
 cp -r /tmp/backend /home/ubuntu/fullstack-project/
 cp -r /tmp/frontend /home/ubuntu/fullstack-project/
 
-echo "Installing backend..."
+echo "Creating Python Virtual Environment..."
 
 cd /home/ubuntu/fullstack-project/backend
 
+rm -rf venv
+
 python3 -m venv venv
 
-./venv/bin/pip install --upgrade pip
+. venv/bin/activate
 
-./venv/bin/pip install -r requirements.txt
+python -m pip install --upgrade pip
+
+python -m pip install -r requirements.txt
+
+deactivate
 
 echo "Restarting FastAPI..."
 
@@ -135,7 +127,7 @@ echo "Restarting Nginx..."
 
 sudo systemctl restart nginx
 
-echo "Deployment completed successfully."
+echo "Deployment Completed Successfully"
 
 EOF
 """
@@ -145,11 +137,14 @@ EOF
 
         stage('Health Check') {
             steps {
+
                 sh """
                     curl -I http://${DEPLOY_SERVER} || true
+                    curl -I http://${DEPLOY_SERVER}:8000 || true
                 """
             }
         }
+
     }
 
     post {
@@ -159,18 +154,20 @@ EOF
         }
 
         success {
-            echo "========================================"
+
+            echo "=========================================="
             echo "Deployment Successful"
             echo "Frontend : http://${DEPLOY_SERVER}"
             echo "Backend  : http://${DEPLOY_SERVER}:8000"
-            echo "========================================"
+            echo "=========================================="
         }
 
         failure {
-            echo "========================================"
+
+            echo "=========================================="
             echo "Deployment Failed"
             echo "Check Jenkins Console Output"
-            echo "========================================"
+            echo "=========================================="
         }
     }
 }
