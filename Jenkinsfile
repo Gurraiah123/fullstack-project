@@ -4,10 +4,6 @@ pipeline {
         label 'slave-1'
     }
 
-    tools {
-        nodejs 'Node22'
-    }
-
     environment {
 
         DEPLOY_USER   = "ubuntu"
