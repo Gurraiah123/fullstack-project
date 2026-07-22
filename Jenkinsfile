@@ -72,7 +72,7 @@ pipeline {
         stage('Copy Package to EC2') {
             steps {
 
-                sshagent(credentials: ['ec2-key']) {
+                sshagent(credentials: ['ubuntu-agent-key']) {
 
                     sh """
                         scp -o StrictHostKeyChecking=no app.zip ${DEPLOY_USER}@${DEPLOY_SERVER}:/tmp/
