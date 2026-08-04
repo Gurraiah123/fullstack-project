@@ -3,37 +3,39 @@ pipeline {
     agent {
         label 'slave-1'
     }
-
     environment {
 
+        APP_NAME = "fullstack-project"
+
+        GIT_BRANCH = "main"
+
         FRONTEND = "frontend"
-        BACKEND  = "backend"
+        BACKEND = "backend"
 
         SONAR_URL = "http://54.176.16.177:9000"
 
         NEXUS_URL = "http://54.176.16.177:8081"
         NEXUS_REPO = "full-stack"
 
-        APP_NAME = "fullstack-project"
-
         DEPLOY_USER = "ubuntu"
-        DEPLOY_HOST = "54.176.16.177"
-        DEPLOY_DIR = "/home/ubuntu/fullstack-project"
+        DEPLOY_HOST = "YOUR_EC2_PUBLIC_IP"
 
-        DOCKERHUB_USERNAME = "guru0114"
+        SSH_CREDENTIAL = "ec2-ssh"
 
-        FRONTEND_IMAGE = "guru0114/frontend"
-        BACKEND_IMAGE = "guru0114/backend"
-
-        IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
     stages {
 
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
         stage('Checkout') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/Gurraiah123/fullstack-project.git'
+                git branch: "${GIT_BRANCH}",
+                url: 'https://github.com/Gurraiah123/fullstack-project.git'
             }
         }
 
@@ -41,7 +43,7 @@ pipeline {
             steps {
                 dir("${FRONTEND}") {
                     sh '''
-                        npm install
+                    npm install
                     '''
                 }
             }
@@ -51,7 +53,7 @@ pipeline {
             steps {
                 dir("${FRONTEND}") {
                     sh '''
-                        npm run build
+                    npm run build
                     '''
                 }
             }
@@ -61,13 +63,13 @@ pipeline {
             steps {
                 dir("${BACKEND}") {
                     sh '''
-                        python3 -m venv venv
+                    python3 -m venv venv
 
-                        . venv/bin/activate
+                    . venv/bin/activate
 
-                        pip install --upgrade pip
+                    pip install --upgrade pip
 
-                        pip install -r requirements.txt
+                    pip install -r requirements.txt
                     '''
                 }
             }
@@ -75,13 +77,15 @@ pipeline {
 
         stage('SonarQube Scan') {
             steps {
-                withSonarQubeEnv('SonarQube') {
+                withSonarQubeEnv('sonarqube') {
+
                     sh '''
-                        sonar-scanner \
-                        -Dsonar.projectKey=fullstack-project \
-                        -Dsonar.projectName=fullstack-project \
-                        -Dsonar.sources=. \
-                        -Dsonar.sourceEncoding=UTF-8
+                    sonar-scanner \
+                    -Dsonar.projectKey=fullstack-project \
+                    -Dsonar.projectName=fullstack-project \
+                    -Dsonar.sources=. \
+                    -Dsonar.host.url=$SONAR_URL \
+                    -Dsonar.login=$SONAR_AUTH_TOKEN
                     '''
                 }
             }
@@ -95,23 +99,94 @@ pipeline {
             }
         }
 
-        stage('Docker Login') {
+        stage('Docker Build') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-credentials',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
+
+                sh '''
+                docker compose build
+                '''
+
+            }
+        }
+
+        stage('Push Docker Images to Nexus') {
+            steps {
+
+                withCredentials([usernamePassword(
+                    credentialsId: 'nexus-creds',
+                    usernameVariable: 'USERNAME',
+                    passwordVariable: 'PASSWORD'
+                )]) {
 
                     sh '''
-                        echo "$DOCKER_PASS" | docker login \
-                        -u "$DOCKER_USER" \
-                        --password-stdin
+                    echo "$PASSWORD" | docker login 54.176.16.177:8082 -u "$USERNAME" --password-stdin
+
+                    docker tag frontend:latest 54.176.16.177:8082/full-stack/frontend:latest
+
+                    docker tag backend:latest 54.176.16.177:8082/full-stack/backend:latest
+
+                    docker push 54.176.16.177:8082/full-stack/frontend:latest
+
+                    docker push 54.176.16.177:8082/full-stack/backend:latest
                     '''
+
                 }
+
             }
+        }
+
+        stage('Deploy to EC2') {
+
+            steps {
+
+                sshagent(credentials: ["${SSH_CREDENTIAL}"]) {
+
+                    sh """
+
+                    ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+
+                    cd /home/ubuntu/${APP_NAME}
+
+                    git pull
+
+                    docker compose down
+
+                    docker compose pull
+
+                    docker compose up -d --build
+
+                    docker image prune -f
+
+                    '
+
+                    """
+
+                }
+
+            }
+
+        }
+
+    }
+
+    post {
+
+        success {
+
+            echo "Pipeline Completed Successfully"
+
+        }
+
+        failure {
+
+            echo "Pipeline Failed"
+
+        }
+
+        always {
+
+            cleanWs()
+
         }
 
     }
