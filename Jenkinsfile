@@ -3,6 +3,7 @@ pipeline {
     agent {
         label 'slave-1'
     }
+
     environment {
 
         APP_NAME = "fullstack-project"
@@ -10,18 +11,17 @@ pipeline {
         GIT_BRANCH = "main"
 
         FRONTEND = "frontend"
-        BACKEND = "backend"
+        BACKEND  = "backend"
 
         SONAR_URL = "http://54.176.16.177:9000"
 
-        NEXUS_URL = "http://54.176.16.177:8081"
+        NEXUS_URL  = "54.176.16.177:8082"
         NEXUS_REPO = "full-stack"
 
         DEPLOY_USER = "ubuntu"
         DEPLOY_HOST = "YOUR_EC2_PUBLIC_IP"
 
         SSH_CREDENTIAL = "ec2-ssh"
-
     }
 
     stages {
@@ -34,8 +34,10 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: "${GIT_BRANCH}",
-                url: 'https://github.com/Gurraiah123/fullstack-project.git'
+                git(
+                    branch: "${GIT_BRANCH}",
+                    url: "https://github.com/Gurraiah123/fullstack-project.git"
+                )
             }
         }
 
@@ -43,7 +45,7 @@ pipeline {
             steps {
                 dir("${FRONTEND}") {
                     sh '''
-                    npm install
+                        npm install
                     '''
                 }
             }
@@ -53,7 +55,7 @@ pipeline {
             steps {
                 dir("${FRONTEND}") {
                     sh '''
-                    npm run build
+                        npm run build
                     '''
                 }
             }
@@ -63,13 +65,13 @@ pipeline {
             steps {
                 dir("${BACKEND}") {
                     sh '''
-                    python3 -m venv venv
+                        python3 -m venv venv
 
-                    . venv/bin/activate
+                        . venv/bin/activate
 
-                    pip install --upgrade pip
+                        pip install --upgrade pip
 
-                    pip install -r requirements.txt
+                        pip install -r requirements.txt
                     '''
                 }
             }
@@ -77,21 +79,31 @@ pipeline {
 
         stage('SonarQube Scan') {
             steps {
+
                 withSonarQubeEnv('SonarQube') {
-    sh '''
-    sonar-scanner \
-      -Dsonar.projectKey=fullstack-project \
-      -Dsonar.projectName=fullstack-project \
-      -Dsonar.sources=.
-    '''
-}
+
+                    sh '''
+                    sonar-scanner \
+                    -Dsonar.projectKey=fullstack-project \
+                    -Dsonar.projectName=fullstack-project \
+                    -Dsonar.sources=. \
+                    -Dsonar.host.url=$SONAR_HOST_URL
+                    '''
+
+                }
+
+            }
         }
 
         stage('Quality Gate') {
             steps {
+
                 timeout(time: 10, unit: 'MINUTES') {
+
                     waitForQualityGate abortPipeline: true
+
                 }
+
             }
         }
 
@@ -99,36 +111,42 @@ pipeline {
             steps {
 
                 sh '''
-                docker compose build
+                    docker compose build
                 '''
 
             }
         }
 
         stage('Push Docker Images to Nexus') {
+
             steps {
 
-                withCredentials([usernamePassword(
-                    credentialsId: 'nexus-creds',
-                    usernameVariable: 'USERNAME',
-                    passwordVariable: 'PASSWORD'
-                )]) {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'nexus-creds',
+                        usernameVariable: 'USERNAME',
+                        passwordVariable: 'PASSWORD'
+                    )
+                ]) {
 
                     sh '''
-                    echo "$PASSWORD" | docker login 54.176.16.177:8082 -u "$USERNAME" --password-stdin
 
-                    docker tag frontend:latest 54.176.16.177:8082/full-stack/frontend:latest
+                    echo "$PASSWORD" | docker login ${NEXUS_URL} -u "$USERNAME" --password-stdin
 
-                    docker tag backend:latest 54.176.16.177:8082/full-stack/backend:latest
+                    docker tag frontend:latest ${NEXUS_URL}/${NEXUS_REPO}/frontend:latest
 
-                    docker push 54.176.16.177:8082/full-stack/frontend:latest
+                    docker tag backend:latest ${NEXUS_URL}/${NEXUS_REPO}/backend:latest
 
-                    docker push 54.176.16.177:8082/full-stack/backend:latest
+                    docker push ${NEXUS_URL}/${NEXUS_REPO}/frontend:latest
+
+                    docker push ${NEXUS_URL}/${NEXUS_REPO}/backend:latest
+
                     '''
 
                 }
 
             }
+
         }
 
         stage('Deploy to EC2') {
