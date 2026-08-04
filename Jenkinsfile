@@ -1,173 +1,164 @@
 pipeline {
-
+ 
     agent {
         label 'slave-1'
     }
-
-    environment {
-        DEPLOY_USER   = "ubuntu"
-        DEPLOY_SERVER = "54.252.74.150"
-        DEPLOY_DIR    = "/home/ubuntu/fullstack-project"
-
-        FRONTEND_DIR  = "frontend"
-        BACKEND_DIR   = "backend"
+ 
+    options {
+        timestamps()
+        ansiColor('xterm')
     }
-
+ 
+    environment {
+ 
+        GIT_BRANCH = "main"
+ 
+        FRONTEND = "frontend"
+        BACKEND = "backend"
+ 
+        SONAR_URL = "http://54.176.16.177:9000"
+ 
+        NEXUS_URL = "http://54.176.16.177:8081"
+        NEXUS_REPO = "full-stack"
+ 
+        APP_NAME = "fullstack-project"
+ 
+        DEPLOY_USER = "ubuntu"
+        DEPLOY_HOST = "54.176.16.177"
+        DEPLOY_DIR = "/home/ubuntu/fullstack-project"
+ 
+        DOCKERHUB_USERNAME = "guru0114"
+ 
+        FRONTEND_IMAGE = "guru0114/frontend"
+        BACKEND_IMAGE  = "guru0114/backend"
+ 
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+ 
     stages {
-
-        stage('Checkout Source') {
+ 
+        stage('Checkout') {
+ 
             steps {
                 checkout scm
             }
+ 
         }
-
-        stage('Frontend - Install Dependencies') {
+ 
+        stage('Frontend Install') {
+ 
             steps {
-                dir("${FRONTEND_DIR}") {
+ 
+                dir("${FRONTEND}") {
+ 
                     sh '''
-                        export NVM_DIR="$HOME/.nvm"
-                        [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-
-                        node -v
-                        npm -v
-
-                        npm install
+                    npm install
                     '''
+ 
                 }
+ 
             }
+ 
         }
-
-        stage('Frontend - Build') {
+ 
+        stage('Frontend Build') {
+ 
             steps {
-                dir("${FRONTEND_DIR}") {
+ 
+                dir("${FRONTEND}") {
+ 
                     sh '''
-                        export NVM_DIR="$HOME/.nvm"
-                        [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-
-                        npm run build
+                    npm run build
                     '''
+ 
                 }
+ 
             }
+ 
         }
-
-        stage('Package Application') {
+ 
+        stage('Backend Install') {
+ 
             steps {
-                sh '''
-                    rm -f app.zip
-
-                    zip -r app.zip . \
-                    -x "*.git*" \
-                    -x "frontend/node_modules/*" \
-                    -x "backend/venv/*"
-                '''
-            }
-        }
-
-        stage('Copy Package to EC2') {
-            steps {
-                sshagent(credentials: ['ubuntu-agent-key']) {
-
-                    sh """
-                    scp -o StrictHostKeyChecking=no app.zip ${DEPLOY_USER}@${DEPLOY_SERVER}:/tmp/
-                    """
+ 
+                dir("${BACKEND}") {
+ 
+                    sh '''
+ 
+                    python3 -m venv venv
+ 
+                    . venv/bin/activate
+ 
+                    pip install --upgrade pip
+ 
+                    pip install -r requirements.txt
+ 
+                    '''
+ 
                 }
+ 
             }
+ 
         }
-
-        stage('Deploy Application') {
+ 
+        stage('SonarQube Scan') {
+ 
             steps {
-
-                sshagent(credentials: ['ubuntu-agent-key']) {
-
-                    sh """
-ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} << 'EOF'
-
-set -e
-
-echo "Cleaning old deployment..."
-
-sudo rm -rf /home/ubuntu/fullstack-project
-mkdir -p /home/ubuntu/fullstack-project
-
-echo "Extracting application..."
-
-rm -rf /tmp/backend /tmp/frontend
-unzip -o /tmp/app.zip -d /tmp
-
-cp -r /tmp/backend /home/ubuntu/fullstack-project/
-cp -r /tmp/frontend /home/ubuntu/fullstack-project/
-
-echo "Creating Python Virtual Environment..."
-
-cd /home/ubuntu/fullstack-project/backend
-
-rm -rf venv
-
-python3 -m venv venv
-
-. venv/bin/activate
-
-python -m pip install --upgrade pip
-
-python -m pip install -r requirements.txt
-
-deactivate
-
-echo "Restarting FastAPI..."
-
-sudo systemctl restart fastapi
-
-echo "Deploying Frontend..."
-
-sudo rm -rf /var/www/html/*
-
-sudo cp -r /home/ubuntu/fullstack-project/frontend/dist/* /var/www/html/
-
-echo "Restarting Nginx..."
-
-sudo systemctl restart nginx
-
-echo "Deployment Completed Successfully"
-
-EOF
-"""
+ 
+                withSonarQubeEnv('SonarQube') {
+ 
+                    sh '''
+ 
+                    sonar-scanner \
+                    -Dsonar.projectKey=fullstack-project \
+                    -Dsonar.projectName=fullstack-project \
+                    -Dsonar.sources=. \
+                    -Dsonar.sourceEncoding=UTF-8
+ 
+                    '''
+ 
                 }
+ 
             }
+ 
         }
-
-        stage('Health Check') {
+ 
+        stage('Quality Gate') {
+ 
             steps {
-
-                sh """
-                    curl -I http://${DEPLOY_SERVER} || true
-                    curl -I http://${DEPLOY_SERVER}:8000 || true
-                """
+ 
+                timeout(time: 10, unit: 'MINUTES') {
+ 
+                    waitForQualityGate abortPipeline: true
+ 
+                }
+ 
             }
+ 
         }
-
-    }
-
-    post {
-
-        always {
-            cleanWs()
+ 
+        stage('Docker Login') {
+ 
+            steps {
+ 
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+ 
+                    sh '''
+ 
+                    echo "$DOCKER_PASS" | docker login \
+                    -u "$DOCKER_USER" \
+                    --password-stdin
+ 
+                    '''
+ 
+                }
+ 
+            }
+ 
         }
-
-        success {
-
-            echo "=========================================="
-            echo "Deployment Successful"
-            echo "Frontend : http://${DEPLOY_SERVER}"
-            echo "Backend  : http://${DEPLOY_SERVER}:8000"
-            echo "=========================================="
-        }
-
-        failure {
-
-            echo "=========================================="
-            echo "Deployment Failed"
-            echo "Check Jenkins Console Output"
-            echo "=========================================="
-        }
-    }
-}
