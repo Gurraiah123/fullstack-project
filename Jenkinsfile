@@ -80,7 +80,7 @@ pipeline {
                     sh '''
                     docker run --rm \
                       -e SONAR_HOST_URL=http://54.176.16.177:9000 \
-                      -e SONAR_TOKEN=$SONAR_TOKEN \
+                      -e sonar-token=$sonar-token \
                       -v "$PWD:/usr/src" \
                       sonarsource/sonar-scanner-cli:latest \
                       -Dsonar.projectKey=fullstack-project \
