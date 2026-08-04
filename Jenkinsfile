@@ -4,18 +4,19 @@ pipeline {
         label 'slave-1'
     }
 
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
     environment {
-
         APP_NAME = "fullstack-project"
-
         GIT_BRANCH = "main"
 
         FRONTEND = "frontend"
-        BACKEND  = "backend"
+        BACKEND = "backend"
 
-        SONAR_URL = "http://54.176.16.177:9000"
-
-        NEXUS_URL  = "54.176.16.177:8082"
+        NEXUS_URL = "54.176.16.177:8082"
         NEXUS_REPO = "full-stack"
 
         DEPLOY_USER = "ubuntu"
@@ -66,48 +67,44 @@ pipeline {
                 dir("${BACKEND}") {
                     sh '''
                         python3 -m venv venv
-
                         . venv/bin/activate
-
                         pip install --upgrade pip
-
                         pip install -r requirements.txt
                     '''
                 }
             }
         }
 
-         sonar-scanner \
--Dsonar.projectKey=fullstack-project \
--Dsonar.projectName=fullstack-project \
--Dsonar.sources=. \
--Dsonar.host.url=http://54.176.16.177:9000 \
--Dsonar.token=sqa_361870a938cfbd41429ebe86378423bc5b061c40
-
-        stage('Quality Gate') {
+        stage('SonarQube Scan') {
             steps {
 
-                timeout(time: 10, unit: 'MINUTES') {
+                withCredentials([
+                    string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')
+                ]) {
 
-                    waitForQualityGate abortPipeline: true
-
+                    sh '''
+                    docker run --rm \
+                      -e SONAR_HOST_URL=http://54.176.16.177:9000 \
+                      -e SONAR_TOKEN=$SONAR_TOKEN \
+                      -v "$PWD:/usr/src" \
+                      sonarsource/sonar-scanner-cli:latest \
+                      -Dsonar.projectKey=fullstack-project \
+                      -Dsonar.projectName=fullstack-project \
+                      -Dsonar.sources=/usr/src
+                    '''
                 }
-
             }
         }
 
         stage('Docker Build') {
             steps {
-
                 sh '''
                     docker compose build
                 '''
-
             }
         }
 
-        stage('Push Docker Images to Nexus') {
-
+        stage('Push Docker Images') {
             steps {
 
                 withCredentials([
@@ -119,55 +116,35 @@ pipeline {
                 ]) {
 
                     sh '''
-
                     echo "$PASSWORD" | docker login ${NEXUS_URL} -u "$USERNAME" --password-stdin
 
                     docker tag frontend:latest ${NEXUS_URL}/${NEXUS_REPO}/frontend:latest
-
                     docker tag backend:latest ${NEXUS_URL}/${NEXUS_REPO}/backend:latest
 
                     docker push ${NEXUS_URL}/${NEXUS_REPO}/frontend:latest
-
                     docker push ${NEXUS_URL}/${NEXUS_REPO}/backend:latest
-
                     '''
-
                 }
-
             }
-
         }
 
         stage('Deploy to EC2') {
-
             steps {
 
                 sshagent(credentials: ["${SSH_CREDENTIAL}"]) {
 
                     sh """
-
                     ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-
-                    cd /home/ubuntu/${APP_NAME}
-
-                    git pull
-
-                    docker compose down
-
-                    docker compose pull
-
-                    docker compose up -d --build
-
-                    docker image prune -f
-
+                        cd /home/ubuntu/${APP_NAME}
+                        git pull
+                        docker compose down
+                        docker compose pull
+                        docker compose up -d
+                        docker image prune -f
                     '
-
                     """
-
                 }
-
             }
-
         }
 
     }
@@ -175,23 +152,15 @@ pipeline {
     post {
 
         success {
-
-            echo "Pipeline Completed Successfully"
-
+            echo 'Pipeline Completed Successfully'
         }
 
         failure {
-
-            echo "Pipeline Failed"
-
+            echo 'Pipeline Failed'
         }
 
         always {
-
             cleanWs()
-
         }
-
     }
-
 }
