@@ -77,18 +77,14 @@ pipeline {
 
         stage('SonarQube Scan') {
             steps {
-                withSonarQubeEnv('sonarqube') {
-
-                    sh '''
-                    sonar-scanner \
-                    -Dsonar.projectKey=fullstack-project \
-                    -Dsonar.projectName=fullstack-project \
-                    -Dsonar.sources=. \
-                    -Dsonar.host.url=$SONAR_URL \
-                    -Dsonar.login=$SONAR_AUTH_TOKEN
-                    '''
-                }
-            }
+                withSonarQubeEnv('SonarQube') {
+    sh '''
+    sonar-scanner \
+      -Dsonar.projectKey=fullstack-project \
+      -Dsonar.projectName=fullstack-project \
+      -Dsonar.sources=.
+    '''
+}
         }
 
         stage('Quality Gate') {
