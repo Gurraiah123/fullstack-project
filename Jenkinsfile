@@ -4,17 +4,10 @@ pipeline {
         label 'slave-1'
     }
 
-    options {
-        timestamps()
-        ansiColor('xterm')
-    }
-
     environment {
 
-        GIT_BRANCH = "main"
-
         FRONTEND = "frontend"
-        BACKEND = "backend"
+        BACKEND  = "backend"
 
         SONAR_URL = "http://54.176.16.177:9000"
 
@@ -30,7 +23,7 @@ pipeline {
         DOCKERHUB_USERNAME = "guru0114"
 
         FRONTEND_IMAGE = "guru0114/frontend"
-        BACKEND_IMAGE  = "guru0114/backend"
+        BACKEND_IMAGE = "guru0114/backend"
 
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
@@ -39,7 +32,8 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                checkout scm
+                git branch: 'main',
+                    url: 'https://github.com/Gurraiah123/fullstack-project.git'
             }
         }
 
