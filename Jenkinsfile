@@ -4,12 +4,7 @@ pipeline {
         label 'slave-1'
     }
 
-    options {
-        timestamps()
-        ansiColor('xterm')
-    }
-
-    environment {
+     environment {
         APP_NAME = "fullstack-project"
         GIT_BRANCH = "main"
 
