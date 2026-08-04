@@ -77,15 +77,12 @@ pipeline {
             }
         }
 
-          stage('SonarQube Scan') {
-            steps {
-                sh '''
-
-                -Dsonar.host.url=http://54.176.16.177:9000 \
-                -Dsonar.token=sqa_361870a938cfbd41429ebe86378423bc5b061c40
-                '''
-            }
-        }
+         sonar-scanner \
+-Dsonar.projectKey=fullstack-project \
+-Dsonar.projectName=fullstack-project \
+-Dsonar.sources=. \
+-Dsonar.host.url=http://54.176.16.177:9000 \
+-Dsonar.token=sqa_361870a938cfbd41429ebe86378423bc5b061c40
 
         stage('Quality Gate') {
             steps {
