@@ -81,7 +81,7 @@ pipeline {
             steps {
                 sh '''
 
-                -Dsonar.host.url=http://54.67.148.103:9000 \
+                -Dsonar.host.url=http://54.176.16.177:9000 \
                 -Dsonar.token=sqa_361870a938cfbd41429ebe86378423bc5b061c40
                 '''
             }
