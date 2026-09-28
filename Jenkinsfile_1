@@ -1,17 +1,18 @@
+```groovy
 pipeline {
 
     agent any
 
     environment {
-        APP_NAME    = "fullstack-project"
-        GIT_BRANCH  = "main"
+        APP_NAME    = 'fullstack-project'
+        GIT_BRANCH  = 'main'
 
-        FRONTEND    = "frontend"
-        BACKEND     = "backend"
+        FRONTEND    = 'frontend'
+        BACKEND     = 'backend'
 
-        DEPLOY_USER = "ubuntu"
-        DEPLOY_HOST = "54.234.37.212"
-        DEPLOY_PATH = "/home/ubuntu/fullstack-project"
+        DEPLOY_USER = 'ubuntu'
+        DEPLOY_HOST = '54.234.37.212'
+        DEPLOY_PATH = '/home/ubuntu/fullstack-project'
     }
 
     stages {
@@ -24,10 +25,14 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git(
-                    branch: "${main}",
-                    url: "https://github.com/Gurraiah123/fullstack-project.git"
-                )
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/Gurraiah123/fullstack-project.git',
+                        credentialsId: 'github'
+                    ]]
+                ])
             }
         }
 
@@ -36,6 +41,7 @@ pipeline {
                 dir("${FRONTEND}") {
                     sh '''
                         set -e
+                        echo "Installing frontend dependencies..."
                         npm install
                     '''
                 }
@@ -47,6 +53,7 @@ pipeline {
                 dir("${FRONTEND}") {
                     sh '''
                         set -e
+                        echo "Building frontend..."
                         npm run build
                     '''
                 }
@@ -59,12 +66,16 @@ pipeline {
                     sh '''
                         set -e
 
+                        echo "Creating Python virtual environment..."
                         python3 -m venv venv
 
                         . venv/bin/activate
 
+                        echo "Installing Python dependencies..."
                         pip install --upgrade pip
                         pip install -r requirements.txt
+
+                        echo "Backend dependency installation completed."
                     '''
                 }
             }
@@ -75,6 +86,7 @@ pipeline {
                 sh '''
                     set -e
 
+                    echo "Validating Docker Compose..."
                     docker compose config
                 '''
             }
@@ -85,7 +97,10 @@ pipeline {
                 sh '''
                     set -e
 
+                    echo "Building Docker images..."
                     docker compose build --no-cache
+
+                    echo "Docker build completed successfully."
                 '''
             }
         }
@@ -103,7 +118,7 @@ pipeline {
                         ssh \
                             -o StrictHostKeyChecking=no \
                             -o UserKnownHostsFile=/dev/null \
-                            ubuntu@54.234.37.212 \
+                            "${DEPLOY_USER}@${DEPLOY_HOST}" \
                             'hostname && whoami && docker --version && docker compose version'
 
                         echo "======================================"
@@ -121,67 +136,27 @@ pipeline {
                         set -e
 
                         echo "======================================"
-                        echo "Connecting to EC2"
+                        echo "Starting EC2 Deployment"
                         echo "======================================"
 
                         ssh \
                             -o StrictHostKeyChecking=no \
                             -o UserKnownHostsFile=/dev/null \
-                            ${DEPLOY_USER}@${DEPLOY_HOST} << EOF
-
-                        set -e
-
-                        echo "======================================"
-                        echo "Starting Deployment"
-                        echo "======================================"
-
-                        cd ${DEPLOY_PATH}
-
-                        echo "Current directory:"
-                        pwd
-
-                        echo "Pulling latest code..."
-
-                        git fetch origin ${main}
-                        git reset --hard origin/${main}
-
-                        echo "Stopping old containers..."
-
-                        docker compose down
-
-                        echo "Removing unused containers..."
-
-                        docker container prune -f
-
-                        echo "Building latest Docker images..."
-
-                        docker compose build
-
-                        echo "Starting application..."
-
-                        docker compose up -d
-
-                        echo "Waiting for containers..."
-
-                        sleep 10
-
-                        echo "Container status:"
-
-                        docker compose ps
-
-                        echo "Docker images:"
-
-                        docker images
-
-                        echo "Cleaning unused Docker images..."
-
-                        docker image prune -f
+                            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+                            "cd ${DEPLOY_PATH} && \
+                             git fetch origin ${GIT_BRANCH} && \
+                             git reset --hard origin/${GIT_BRANCH} && \
+                             docker compose down && \
+                             docker container prune -f && \
+                             docker compose build && \
+                             docker compose up -d && \
+                             sleep 10 && \
+                             docker compose ps && \
+                             docker image prune -f"
 
                         echo "======================================"
                         echo "Deployment Completed Successfully"
                         echo "======================================"
-
-                        EOF
                     '''
                 }
             }
@@ -200,25 +175,16 @@ pipeline {
                         ssh \
                             -o StrictHostKeyChecking=no \
                             -o UserKnownHostsFile=/dev/null \
-                            ${DEPLOY_USER}@${DEPLOY_HOST} << EOF
-
-                        set -e
-
-                        cd ${DEPLOY_PATH}
-
-                        echo "Checking running containers..."
-
-                        docker compose ps
-
-                        echo "Checking Docker container health..."
-
-                        docker ps --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
+                            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+                            "cd ${DEPLOY_PATH} && \
+                             echo 'Container Status:' && \
+                             docker compose ps && \
+                             echo 'Docker Status:' && \
+                             docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ports}}'"
 
                         echo "======================================"
                         echo "Deployment Verification Completed"
                         echo "======================================"
-
-                        EOF
                     '''
                 }
             }
@@ -245,3 +211,4 @@ pipeline {
         }
     }
 }
+```
