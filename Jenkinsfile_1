@@ -1,8 +1,6 @@
 pipeline {
-
-```
 agent any
-
+}
 environment {
     APP_NAME = "fullstack-project"
     GIT_BRANCH = "main"
@@ -146,6 +144,5 @@ post {
         cleanWs()
     }
 }
-```
 
 }
