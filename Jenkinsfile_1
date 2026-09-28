@@ -3,16 +3,17 @@ pipeline {
     agent any
 
     environment {
-        APP_NAME = "fullstack-project"
-        GIT_BRANCH = "main"
+        APP_NAME       = "fullstack-project"
+        GIT_BRANCH     = "main"
 
-        FRONTEND = "frontend"
-        BACKEND = "backend"
+        FRONTEND       = "frontend"
+        BACKEND        = "backend"
 
-        DEPLOY_USER = "ubuntu"
-        DEPLOY_HOST = "54.234.37.212"
+        DEPLOY_USER    = "ubuntu"
+        DEPLOY_HOST    = "54.234.37.212"
 
         SSH_CREDENTIAL = "ec2-ssh"
+        DEPLOY_PATH    = "/home/ubuntu/fullstack-project"
     }
 
     stages {
@@ -36,6 +37,7 @@ pipeline {
             steps {
                 dir("${FRONTEND}") {
                     sh '''
+                        set -e
                         npm install
                     '''
                 }
@@ -46,18 +48,23 @@ pipeline {
             steps {
                 dir("${FRONTEND}") {
                     sh '''
+                        set -e
                         npm run build
                     '''
                 }
             }
         }
 
-        stage('Backend Install') {
+        stage('Backend Install & Test') {
             steps {
                 dir("${BACKEND}") {
                     sh '''
+                        set -e
+
                         python3 -m venv venv
+
                         . venv/bin/activate
+
                         pip install --upgrade pip
                         pip install -r requirements.txt
                     '''
@@ -68,28 +75,17 @@ pipeline {
         stage('Docker Compose Validate') {
             steps {
                 sh '''
+                    set -e
                     docker compose config
                 '''
             }
         }
 
-        stage('Docker Build') {
+        stage('Docker Build Test') {
             steps {
                 sh '''
-                    docker compose build
-                '''
-            }
-        }
-
-        stage('Push Changes to GitHub') {
-            steps {
-                sh '''
-                    git status
-                    git add .
-
-                    git diff --cached --quiet || git commit -m "CI: Update application"
-
-                    git push origin ${GIT_BRANCH}
+                    set -e
+                    docker compose build --no-cache
                 '''
             }
         }
@@ -100,31 +96,93 @@ pipeline {
                 sshagent(credentials: ["${SSH_CREDENTIAL}"]) {
 
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+                        set -e
+
+                        echo "Connecting to EC2..."
+
+                        ssh -o StrictHostKeyChecking=no \\
+                            ${DEPLOY_USER}@${DEPLOY_HOST} << 'EOF'
+
                             set -e
 
-                            cd /home/ubuntu/${APP_NAME}
+                            echo "======================================"
+                            echo "Starting Deployment"
+                            echo "======================================"
+
+                            cd ${DEPLOY_PATH}
+
+                            echo "Current directory:"
+                            pwd
 
                             echo "Pulling latest code..."
-                            git pull origin ${GIT_BRANCH}
 
-                            echo "Stopping existing containers..."
+                            git fetch origin ${GIT_BRANCH}
+                            git reset --hard origin/${GIT_BRANCH}
+
+                            echo "Stopping old containers..."
+
                             docker compose down
 
-                            echo "Building Docker images..."
+                            echo "Removing unused containers..."
+
+                            docker container prune -f
+
+                            echo "Building latest Docker images..."
+
                             docker compose build
 
-                            echo "Starting containers..."
+                            echo "Starting application..."
+
                             docker compose up -d
 
-                            echo "Cleaning unused Docker images..."
-                            docker image prune -f
+                            echo "Waiting for containers..."
 
-                            echo "Deployment completed."
+                            sleep 10
 
                             echo "Container status:"
+
                             docker compose ps
-                        '
+
+                            echo "Docker images:"
+
+                            docker images
+
+                            echo "Cleaning unused Docker images..."
+
+                            docker image prune -f
+
+                            echo "======================================"
+                            echo "Deployment Completed Successfully"
+                            echo "======================================"
+
+EOF
+                    """
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+
+                sshagent(credentials: ["${SSH_CREDENTIAL}"]) {
+
+                    sh """
+                        ssh -o StrictHostKeyChecking=no \\
+                            ${DEPLOY_USER}@${DEPLOY_HOST} << 'EOF'
+
+                            set -e
+
+                            cd ${DEPLOY_PATH}
+
+                            echo "Checking running containers..."
+
+                            docker compose ps
+
+                            echo "Checking Docker container health..."
+
+                            docker ps --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
+
+EOF
                     """
                 }
             }
@@ -134,11 +192,16 @@ pipeline {
     post {
 
         success {
+            echo '======================================'
             echo 'Pipeline Completed Successfully'
+            echo '======================================'
         }
 
         failure {
+            echo '======================================'
             echo 'Pipeline Failed'
+            echo 'Check Jenkins console output'
+            echo '======================================'
         }
 
         always {
