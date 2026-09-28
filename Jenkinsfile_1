@@ -1,0 +1,151 @@
+pipeline {
+
+```
+agent any
+
+environment {
+    APP_NAME = "fullstack-project"
+    GIT_BRANCH = "main"
+
+    FRONTEND = "frontend"
+    BACKEND = "backend"
+
+    DEPLOY_USER = "ubuntu"
+    DEPLOY_HOST = "54.234.37.212"
+
+    SSH_CREDENTIAL = "ec2-ssh"
+}
+
+stages {
+
+    stage('Clean Workspace') {
+        steps {
+            cleanWs()
+        }
+    }
+
+    stage('Checkout') {
+        steps {
+            git(
+                branch: "${GIT_BRANCH}",
+                url: "https://github.com/Gurraiah123/fullstack-project.git"
+            )
+        }
+    }
+
+    stage('Frontend Install') {
+        steps {
+            dir("${FRONTEND}") {
+                sh '''
+                    npm install
+                '''
+            }
+        }
+    }
+
+    stage('Frontend Build') {
+        steps {
+            dir("${FRONTEND}") {
+                sh '''
+                    npm run build
+                '''
+            }
+        }
+    }
+
+    stage('Backend Install') {
+        steps {
+            dir("${BACKEND}") {
+                sh '''
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                '''
+            }
+        }
+    }
+
+    stage('Docker Compose Validate') {
+        steps {
+            sh '''
+                docker compose config
+            '''
+        }
+    }
+
+    stage('Docker Build') {
+        steps {
+            sh '''
+                docker compose build
+            '''
+        }
+    }
+
+    stage('Push Changes to GitHub') {
+        steps {
+            sh '''
+                git status
+                git add .
+                
+                git diff --cached --quiet || git commit -m "CI: Update application"
+                
+                git push origin ${GIT_BRANCH}
+            '''
+        }
+    }
+
+    stage('Deploy to EC2') {
+        steps {
+
+            sshagent(credentials: ["${SSH_CREDENTIAL}"]) {
+
+                sh """
+                    ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+                        set -e
+
+                        cd /home/ubuntu/${APP_NAME}
+
+                        echo "Pulling latest code..."
+                        git pull origin ${GIT_BRANCH}
+
+                        echo "Stopping existing containers..."
+                        docker compose down
+
+                        echo "Building Docker images..."
+                        docker compose build
+
+                        echo "Starting containers..."
+                        docker compose up -d
+
+                        echo "Cleaning unused Docker images..."
+                        docker image prune -f
+
+                        echo "Deployment completed."
+
+                        echo "Container status:"
+                        docker compose ps
+                    '
+                """
+            }
+        }
+    }
+}
+
+post {
+
+    success {
+        echo 'Pipeline Completed Successfully'
+    }
+
+    failure {
+        echo 'Pipeline Failed'
+    }
+
+    always {
+        cleanWs()
+    }
+}
+```
+
+}
