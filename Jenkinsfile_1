@@ -12,7 +12,7 @@ pipeline {
         DEPLOY_USER    = "ubuntu"
         DEPLOY_HOST    = "54.234.37.212"
 
-        SSH_CREDENTIAL = "ec2-ssh"
+        SSH_CREDENTIAL = "SSH_CREDENTIAL"
         DEPLOY_PATH    = "/home/ubuntu/fullstack-project"
     }
 
