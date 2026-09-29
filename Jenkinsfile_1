@@ -10,7 +10,7 @@ pipeline {
         BACKEND     = 'backend'
 
         DEPLOY_USER = 'ubuntu'
-        DEPLOY_HOST = '54.234.37.212'
+        DEPLOY_HOST = '100.51.49.13'
         DEPLOY_PATH = '/home/ubuntu/fullstack-project'
     }
 
