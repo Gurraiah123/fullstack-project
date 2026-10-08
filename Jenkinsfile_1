@@ -1,370 +1,303 @@
 pipeline {
 
-    agent any
+```
+agent any
 
-    environment {
-        APP_NAME       = 'fullstack-project'
-        GIT_BRANCH     = 'main'
+environment {
+    APP_NAME       = 'fullstack-project'
+    GIT_BRANCH     = 'main'
 
-        FRONTEND       = 'frontend'
-        BACKEND        = 'backend'
+    FRONTEND       = 'frontend'
+    BACKEND        = 'backend'
 
-        DEPLOY_USER    = 'ec2-user'
-        DEPLOY_HOST    = '35.170.55.91'
-        DEPLOY_PATH    = '/home/ec2-user/fullstack-project'
+    DEPLOY_USER    = 'ec2-user'
+    DEPLOY_HOST    = '35.170.55.91'
+    DEPLOY_PATH    = '/home/ec2-user/fullstack-project'
 
-        // Docker Hub
-        DOCKER_USER    = 'guru0114'
+    DOCKER_USER    = 'guru0114'
 
-        // Docker image names
-        BACKEND_IMAGE  = 'guru0114/fullstack-backend:latest'
-        FRONTEND_IMAGE = 'guru0114/fullstack-frontend:latest'
+    BACKEND_IMAGE  = 'guru0114/fullstack-backend:latest'
+    FRONTEND_IMAGE = 'guru0114/fullstack-frontend:latest'
+}
+
+stages {
+
+    stage('Clean Workspace') {
+        steps {
+            cleanWs()
+        }
     }
 
-    stages {
-
-        stage('Clean Workspace') {
-            steps {
-                cleanWs()
-            }
+    stage('Checkout') {
+        steps {
+            checkout([
+                $class: 'GitSCM',
+                branches: [[name: "*/${GIT_BRANCH}"]],
+                userRemoteConfigs: [[
+                    url: 'https://github.com/Gurraiah123/fullstack-project.git',
+                    credentialsId: 'github'
+                ]]
+            ])
         }
+    }
 
-        stage('Checkout') {
-            steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: "*/${GIT_BRANCH}"]],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/Gurraiah123/fullstack-project.git',
-                        credentialsId: 'github'
-                    ]]
-                ])
-            }
+    stage('Code Scan - SonarQube') {
+        steps {
+            echo 'Running SonarQube Code Analysis'
+
+            sh '''
+                set -e
+
+                ls -la
+
+                sonar-scanner --version
+
+                sonar-scanner \
+                    -Dsonar.projectKey=fullstack-project \
+                    -Dsonar.projectName=fullstack-project \
+                    -Dsonar.sources=backend,frontend \
+                    -Dsonar.exclusions=**/node_modules/**,**/venv/**,**/__pycache__/**,**/dist/**,**/*.min.js \
+                    -Dsonar.python.version=3 \
+                    -Dsonar.sourceEncoding=UTF-8
+            '''
         }
+    }
 
-        stage('Code Scan - SonarQube') {
-            steps {
-
-                echo '======================================'
-                echo 'Running SonarQube Code Analysis'
-                echo '======================================'
-
+    stage('Frontend Install') {
+        steps {
+            dir("${FRONTEND}") {
                 sh '''
                     set -e
 
-                    echo "Project structure:"
-                    ls -la
+                    echo "Installing React dependencies"
 
-                    echo "Checking SonarScanner:"
-                    sonar-scanner --version
-
-                    echo "Starting SonarQube scan..."
-
-                    sonar-scanner \
-                        -Dsonar.projectKey=fullstack-project \
-                        -Dsonar.projectName=fullstack-project \
-                        -Dsonar.sources=backend,frontend \
-                        -Dsonar.exclusions=**/node_modules/**,**/venv/**,**/__pycache__/**,**/dist/**,**/*.min.js \
-                        -Dsonar.python.version=3 \
-                        -Dsonar.sourceEncoding=UTF-8
-
-                    echo "SonarQube scan completed."
+                    npm install
                 '''
-            }
-        }
-
-        stage('Frontend Install') {
-            steps {
-
-                dir("${FRONTEND}") {
-
-                    sh '''
-                        set -e
-
-                        echo "======================================"
-                        echo "Installing React Dependencies"
-                        echo "======================================"
-
-                        npm install
-
-                        echo "Frontend dependencies installed successfully."
-                    '''
-                }
-            }
-        }
-
-        stage('Frontend Build') {
-            steps {
-
-                dir("${FRONTEND}") {
-
-                    sh '''
-                        set -e
-
-                        echo "======================================"
-                        echo "Building React Application"
-                        echo "======================================"
-
-                        npm run build
-
-                        echo "Frontend build completed successfully."
-                    '''
-                }
-            }
-        }
-
-        stage('Backend Install & Test') {
-            steps {
-
-                dir("${BACKEND}") {
-
-                    sh '''
-                        set -e
-
-                        echo "======================================"
-                        echo "Installing Python Dependencies"
-                        echo "======================================"
-
-                        python3 -m venv venv
-
-                        . venv/bin/activate
-
-                        pip install --upgrade pip
-                        pip install -r requirements.txt
-
-                        echo "Backend dependencies installed."
-
-                        echo "Checking Python syntax..."
-
-                        python -m compileall .
-
-                        echo "Backend validation completed."
-                    '''
-                }
-            }
-        }
-
-        stage('Docker Compose Validate') {
-            steps {
-
-                sh '''
-                    set -e
-
-                    echo "======================================"
-                    echo "Validating Docker Compose"
-                    echo "======================================"
-
-                    docker compose config
-
-                    echo "Docker Compose validation successful."
-                '''
-            }
-        }
-
-        stage('Docker Build') {
-            steps {
-
-                sh '''
-                    set -e
-
-                    echo "======================================"
-                    echo "Building Docker Images"
-                    echo "======================================"
-
-                    docker compose build --no-cache
-
-                    echo "Docker images created:"
-                    docker images
-
-                    echo "Docker build completed successfully."
-                '''
-            }
-        }
-
-        stage('Tag Docker Images') {
-            steps {
-
-                sh '''
-                    set -e
-
-                    echo "======================================"
-                    echo "Tagging Docker Images"
-                    echo "======================================"
-
-                    docker tag fastapi-backend ${BACKEND_IMAGE}
-                    docker tag fastapi-frontend ${FRONTEND_IMAGE}
-
-                    echo "Backend image:"
-                    docker images ${BACKEND_IMAGE}
-
-                    echo "Frontend image:"
-                    docker images ${FRONTEND_IMAGE}
-                '''
-            }
-        }
-
-        stage('Trivy Image Scan') {
-            steps {
-
-                sh '''
-                    set -e
-
-                    echo "======================================"
-                    echo "Scanning Backend Image with Trivy"
-                    echo "======================================"
-
-                    trivy image \
-                        --severity HIGH,CRITICAL \
-                        --exit-code 1 \
-                        ${BACKEND_IMAGE}
-
-                    echo "======================================"
-                    echo "Scanning Frontend Image with Trivy"
-                    echo "======================================"
-
-                    trivy image \
-                        --severity HIGH,CRITICAL \
-                        --exit-code 1 \
-                        ${FRONTEND_IMAGE}
-
-                    echo "Trivy security scan completed successfully."
-                '''
-            }
-        }
-
-        stage('Push Images to Docker Hub') {
-            steps {
-
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'docker-hub',
-                        usernameVariable: 'DOCKER_USERNAME',
-                        passwordVariable: 'DOCKER_PASSWORD'
-                    )
-                ]) {
-
-                    sh '''
-                        set -e
-
-                        echo "======================================"
-                        echo "Logging in to Docker Hub"
-                        echo "======================================"
-
-                        echo "${DOCKER_PASSWORD}" | docker login \
-                            -u "${DOCKER_USERNAME}" \
-                            --password-stdin
-
-                        echo "Pushing backend image..."
-
-                        docker push ${BACKEND_IMAGE}
-
-                        echo "Pushing frontend image..."
-
-                        docker push ${FRONTEND_IMAGE}
-
-                        echo "Docker images pushed successfully."
-
-                        docker logout
-                    '''
-                }
-            }
-        }
-
-        stage('Test EC2 SSH') {
-            steps {
-
-                sshagent(credentials: ['ec2-ssh']) {
-
-                    sh '''
-                        set -e
-
-                        echo "======================================"
-                        echo "Testing EC2 SSH Connection"
-                        echo "======================================"
-
-                        ssh \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "${DEPLOY_USER}@${DEPLOY_HOST}" \
-                            'hostname && whoami && docker --version && docker compose version'
-
-                        echo "EC2 SSH connection successful."
-                    '''
-                }
-            }
-        }
-
-        stage('Deploy to EC2') {
-            steps {
-
-                sshagent(credentials: ['ec2-ssh']) {
-
-                    sh '''
-                        set -e
-
-                        echo "======================================"
-                        echo "Starting EC2 Deployment"
-                        echo "======================================"
-
-                        ssh \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "${DEPLOY_USER}@${DEPLOY_HOST}" \
-                            "cd ${DEPLOY_PATH} && \
-                             git fetch origin ${GIT_BRANCH} && \
-                             git reset --hard origin/${GIT_BRANCH} && \
-                             docker compose down && \
-                             docker compose build && \
-                             docker compose up -d && \
-                             sleep 10 && \
-                             docker compose ps"
-
-                        echo "======================================"
-                        echo "Deployment Completed"
-                        echo "======================================"
-                    '''
-                }
-            }
-        }
-
-        stage('Verify Deployment') {
-            steps {
-
-                sshagent(credentials: ['ec2-ssh']) {
-
-                    sh '''
-                        set -e
-
-                        echo "======================================"
-                        echo "Verifying Application"
-                        echo "======================================"
-
-                        ssh \
-                            -o StrictHostKeyChecking=no \
-                            -o UserKnownHostsFile=/dev/null \
-                            "${DEPLOY_USER}@${DEPLOY_HOST}" \
-                            "cd ${DEPLOY_PATH} && \
-                             echo 'Docker Compose Status:' && \
-                             docker compose ps && \
-                             echo 'Running Containers:' && \
-                             docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ports}}'"
-
-                        echo "======================================"
-                        echo "Deployment Verification Completed"
-                        echo "======================================"
-                    '''
-                }
             }
         }
     }
 
-    post {
+    stage('Frontend Build') {
+        steps {
+            dir("${FRONTEND}") {
+                sh '''
+                    set -e
 
-        success {
-            echo '''
+                    echo "Building React application"
+
+                    npm run build
+                '''
+            }
+        }
+    }
+
+    stage('Backend Install & Test') {
+        steps {
+            dir("${BACKEND}") {
+                sh '''
+                    set -e
+
+                    echo "Installing Python dependencies"
+
+                    python3 -m venv venv
+
+                    . venv/bin/activate
+
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+
+                    echo "Checking Python syntax"
+
+                    python -m compileall .
+                '''
+            }
+        }
+    }
+
+    stage('Docker Compose Validate') {
+        steps {
+            sh '''
+                set -e
+
+                echo "Validating Docker Compose"
+
+                docker compose config
+            '''
+        }
+    }
+
+    stage('Docker Build') {
+        steps {
+            sh '''
+                set -e
+
+                echo "Building Docker images"
+
+                docker compose build --no-cache
+
+                docker images
+            '''
+        }
+    }
+
+    stage('Tag Docker Images') {
+        steps {
+            sh '''
+                set -e
+
+                echo "Tagging Docker images"
+
+                docker tag fastapi-backend ${BACKEND_IMAGE}
+                docker tag fastapi-frontend ${FRONTEND_IMAGE}
+
+                docker images ${BACKEND_IMAGE}
+                docker images ${FRONTEND_IMAGE}
+            '''
+        }
+    }
+
+    stage('Trivy Image Scan') {
+        steps {
+            sh '''
+                set -e
+
+                echo "Scanning backend image"
+
+                trivy image \
+                    --severity HIGH,CRITICAL \
+                    --exit-code 1 \
+                    ${BACKEND_IMAGE}
+
+                echo "Scanning frontend image"
+
+                trivy image \
+                    --severity HIGH,CRITICAL \
+                    --exit-code 1 \
+                    ${FRONTEND_IMAGE}
+
+                echo "Trivy scan completed"
+            '''
+        }
+    }
+
+    stage('Push Images to Docker Hub') {
+        steps {
+
+            withCredentials([
+                usernamePassword(
+                    credentialsId: 'docker-hub',
+                    usernameVariable: 'DOCKER_USERNAME',
+                    passwordVariable: 'DOCKER_PASSWORD'
+                )
+            ]) {
+
+                sh '''
+                    set -e
+
+                    echo "Logging in to Docker Hub"
+
+                    echo "${DOCKER_PASSWORD}" | docker login \
+                        -u "${DOCKER_USERNAME}" \
+                        --password-stdin
+
+                    echo "Pushing backend image"
+
+                    docker push ${BACKEND_IMAGE}
+
+                    echo "Pushing frontend image"
+
+                    docker push ${FRONTEND_IMAGE}
+
+                    docker logout
+                '''
+            }
+        }
+    }
+
+    stage('Test EC2 SSH') {
+        steps {
+
+            sshagent(credentials: ['ec2-ssh']) {
+
+                sh '''
+                    set -e
+
+                    echo "Testing EC2 SSH connection"
+
+                    ssh \
+                        -o StrictHostKeyChecking=no \
+                        -o UserKnownHostsFile=/dev/null \
+                        "${DEPLOY_USER}@${DEPLOY_HOST}" \
+                        'hostname && whoami && docker --version && docker compose version'
+                '''
+            }
+        }
+    }
+
+    stage('Deploy to EC2') {
+        steps {
+
+            sshagent(credentials: ['ec2-ssh']) {
+
+                sh '''
+                    set -e
+
+                    echo "Starting EC2 deployment"
+
+                    ssh \
+                        -o StrictHostKeyChecking=no \
+                        -o UserKnownHostsFile=/dev/null \
+                        "${DEPLOY_USER}@${DEPLOY_HOST}" \
+                        "cd ${DEPLOY_PATH} && \
+                         git fetch origin ${GIT_BRANCH} && \
+                         git reset --hard origin/${GIT_BRANCH} && \
+                         docker compose down && \
+                         docker compose pull && \
+                         docker compose up -d && \
+                         sleep 10 && \
+                         docker compose ps"
+
+                    echo "Deployment completed"
+                '''
+            }
+        }
+    }
+
+    stage('Verify Deployment') {
+        steps {
+
+            sshagent(credentials: ['ec2-ssh']) {
+
+                sh '''
+                    set -e
+
+                    echo "Verifying application"
+
+                    ssh \
+                        -o StrictHostKeyChecking=no \
+                        -o UserKnownHostsFile=/dev/null \
+                        "${DEPLOY_USER}@${DEPLOY_HOST}" \
+                        "cd ${DEPLOY_PATH} && \
+                         echo 'Docker Compose Status:' && \
+                         docker compose ps && \
+                         echo 'Running Containers:' && \
+                         docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ports}}'"
+                '''
+            }
+        }
+    }
+}
+
+post {
+
+    success {
+        echo '''
+```
+
 ======================================
 PIPELINE COMPLETED SUCCESSFULLY
-======================================
+===============================
+
 SonarQube      : PASSED
 Frontend Build : PASSED
 Backend Check  : PASSED
@@ -372,14 +305,30 @@ Docker Build   : PASSED
 Trivy Scan     : PASSED
 Docker Hub     : PASSED
 EC2 Deployment : PASSED
-======================================
-'''
-        }
+=======================
 
-        failure {
-            echo '''
+'''
+}
+
+```
+    failure {
+        echo '''
+```
+
 ======================================
 PIPELINE FAILED
-======================================
-Check Jenkins Console Output
-======================================
+===============
+
+# Check Jenkins Console Output
+
+'''
+}
+
+```
+    always {
+        cleanWs()
+    }
+}
+```
+
+}
