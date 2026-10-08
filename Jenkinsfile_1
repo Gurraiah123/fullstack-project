@@ -47,9 +47,13 @@ stages {
             sh '''
                 set -e
 
+                echo "Project structure:"
                 ls -la
 
+                echo "Checking SonarScanner:"
                 sonar-scanner --version
+
+                echo "Starting SonarQube scan..."
 
                 sonar-scanner \
                     -Dsonar.projectKey=fullstack-project \
@@ -58,6 +62,8 @@ stages {
                     -Dsonar.exclusions=**/node_modules/**,**/venv/**,**/__pycache__/**,**/dist/**,**/*.min.js \
                     -Dsonar.python.version=3 \
                     -Dsonar.sourceEncoding=UTF-8
+
+                echo "SonarQube scan completed."
             '''
         }
     }
@@ -71,6 +77,8 @@ stages {
                     echo "Installing React dependencies"
 
                     npm install
+
+                    echo "Frontend dependencies installed successfully."
                 '''
             }
         }
@@ -85,6 +93,8 @@ stages {
                     echo "Building React application"
 
                     npm run build
+
+                    echo "Frontend build completed successfully."
                 '''
             }
         }
@@ -105,9 +115,13 @@ stages {
                     pip install --upgrade pip
                     pip install -r requirements.txt
 
+                    echo "Backend dependencies installed."
+
                     echo "Checking Python syntax"
 
                     python -m compileall .
+
+                    echo "Backend validation completed."
                 '''
             }
         }
@@ -121,6 +135,8 @@ stages {
                 echo "Validating Docker Compose"
 
                 docker compose config
+
+                echo "Docker Compose validation successful."
             '''
         }
     }
@@ -134,7 +150,11 @@ stages {
 
                 docker compose build --no-cache
 
+                echo "Docker images created:"
+
                 docker images
+
+                echo "Docker build completed successfully."
             '''
         }
     }
@@ -149,7 +169,10 @@ stages {
                 docker tag fastapi-backend ${BACKEND_IMAGE}
                 docker tag fastapi-frontend ${FRONTEND_IMAGE}
 
+                echo "Backend image:"
                 docker images ${BACKEND_IMAGE}
+
+                echo "Frontend image:"
                 docker images ${FRONTEND_IMAGE}
             '''
         }
@@ -160,21 +183,21 @@ stages {
             sh '''
                 set -e
 
-                echo "Scanning backend image"
+                echo "Scanning Backend Image with Trivy"
 
                 trivy image \
                     --severity HIGH,CRITICAL \
                     --exit-code 1 \
                     ${BACKEND_IMAGE}
 
-                echo "Scanning frontend image"
+                echo "Scanning Frontend Image with Trivy"
 
                 trivy image \
                     --severity HIGH,CRITICAL \
                     --exit-code 1 \
                     ${FRONTEND_IMAGE}
 
-                echo "Trivy scan completed"
+                echo "Trivy security scan completed successfully."
             '''
         }
     }
@@ -207,6 +230,8 @@ stages {
 
                     docker push ${FRONTEND_IMAGE}
 
+                    echo "Docker images pushed successfully."
+
                     docker logout
                 '''
             }
@@ -228,6 +253,8 @@ stages {
                         -o UserKnownHostsFile=/dev/null \
                         "${DEPLOY_USER}@${DEPLOY_HOST}" \
                         'hostname && whoami && docker --version && docker compose version'
+
+                    echo "EC2 SSH connection successful."
                 '''
             }
         }
@@ -256,7 +283,7 @@ stages {
                          sleep 10 && \
                          docker compose ps"
 
-                    echo "Deployment completed"
+                    echo "Deployment completed successfully."
                 '''
             }
         }
@@ -281,8 +308,11 @@ stages {
                          docker compose ps && \
                          echo 'Running Containers:' && \
                          docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ports}}'"
+
+                    echo "Deployment verification completed."
                 '''
             }
         }
     }
 }
+
