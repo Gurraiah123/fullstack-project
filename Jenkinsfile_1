@@ -1,6 +1,5 @@
 pipeline {
 
-```
 agent any
 
 environment {
@@ -286,49 +285,4 @@ stages {
             }
         }
     }
-}
-
-post {
-
-    success {
-        echo '''
-```
-
-======================================
-PIPELINE COMPLETED SUCCESSFULLY
-===============================
-
-SonarQube      : PASSED
-Frontend Build : PASSED
-Backend Check  : PASSED
-Docker Build   : PASSED
-Trivy Scan     : PASSED
-Docker Hub     : PASSED
-EC2 Deployment : PASSED
-=======================
-
-'''
-}
-
-```
-    failure {
-        echo '''
-```
-
-======================================
-PIPELINE FAILED
-===============
-
-# Check Jenkins Console Output
-
-'''
-}
-
-```
-    always {
-        cleanWs()
-    }
-}
-```
-
 }
