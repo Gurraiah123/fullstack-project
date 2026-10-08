@@ -9,8 +9,12 @@ services:
       context: ./backend
       dockerfile: Dockerfile
 
-    env_file:
-      - ./backend/.env
+    environment:
+      DB_USER: fastapi
+      DB_PASSWORD: "Password@123"
+      DB_HOST: "35.170.55.91"
+      DB_PORT: "3306"
+      DB_NAME: companydb
 
     restart: unless-stopped
 
